@@ -59,7 +59,7 @@ jobs:
       - name: Run Frontend Tests
         run: |
           cd frontend
-          npx vitest run
+          npx vitest run --reporter=default --reporter=github
 
       - name: Verify Production Build
         run: |
