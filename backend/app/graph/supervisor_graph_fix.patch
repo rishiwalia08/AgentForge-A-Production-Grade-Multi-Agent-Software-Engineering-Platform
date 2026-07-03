@@ -1,0 +1,7 @@
+The fix requires:
+1. Change import from "from app.graph.supervisor_llm import SupervisorDecision, get_supervisor_llm" 
+   to "from app.graph import supervisor_llm"
+2. Update supervisor_node to call "supervisor_llm.get_supervisor_llm()" instead of "get_supervisor_llm()"
+3. Update all references to SupervisorDecision to be "supervisor_llm.SupervisorDecision"
+
+This allows monkeypatching in tests to work correctly because now monkeypatch.setattr(sg, "supervisor_llm", fake_module) will work.

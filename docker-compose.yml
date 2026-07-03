@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: agent_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: agentic_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agent_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agent_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@postgres:5432/agentic_ai
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - JWT_SECRET=change-me-to-a-very-long-secret-key-12345
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  agent-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agent_worker
+    restart: always
+    command: celery -A app.core.celery_app worker --loglevel=info
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@postgres:5432/agentic_ai
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - JWT_SECRET=change-me-to-a-very-long-secret-key-12345
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+        - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    container_name: agent_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
